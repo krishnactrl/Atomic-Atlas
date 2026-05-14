@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elementra — Interactive Periodic Table</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        alkali: '#ef4444',
+                        alkaline: '#f97316',
+                        transition: '#eab308',
+                        postTransition: '#22c55e',
+                        metalloid: '#06b6d4',
+                        nonmetal: '#3b82f6',
+                        halogen: '#8b5cf6',
+                        noble: '#ec4899',
+                        lanthanide: '#14b8a6',
+                        actinide: '#f43f5e',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { scrollbar-width: thin; scrollbar-color: rgba(156,163,175,0.3) transparent; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(156,163,175,0.3); border-radius: 3px; }
+        .element-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .element-card:hover {
+            transform: translateY(-4px) scale(1.08);
+            z-index: 50;
+            box-shadow: 0 20px 40px -10px rgba(0,0,0,0.3);
+        }
+        .glass {
+            background: rgba(255,255,255,0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        .dark .glass {
+            background: rgba(15,23,42,0.7);
+        }
+        .glow-alkali { --glow: rgba(239,68,68,0.4); }
+        .glow-alkaline { --glow: rgba(249,115,22,0.4); }
+        .glow-transition { --glow: rgba(234,179,8,0.4); }
+        .glow-postTransition { --glow: rgba(34,197,94,0.4); }
+        .glow-metalloid { --glow: rgba(6,182,212,0.4); }
+        .glow-nonmetal { --glow: rgba(59,130,246,0.4); }
+        .glow-halogen { --glow: rgba(139,92,246,0.4); }
+        .glow-noble { --glow: rgba(236,72,153,0.4); }
+        .glow-lanthanide { --glow: rgba(20,184,166,0.4); }
+        .glow-actinide { --glow: rgba(244,63,94,0.4); }
+        .element-card:hover {
+            box-shadow: 0 0 30px var(--glow), 0 20px 40px -10px rgba(0,0,0,0.3);
+        }
+        .shell-ring {
+            animation: rotate 20s linear infinite;
+        }
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .electron {
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(0.8); }
+        }
+        .modal-enter {
+            animation: modalIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        @keyframes modalIn {
+            from { opacity: 0; transform: scale(0.95) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .search-highlight {
+            animation: highlight 0.5s ease;
+        }
+        @keyframes highlight {
+            0% { background: rgba(59,130,246,0.3); }
+            100% { background: transparent; }
+        }
+        .compare-row:hover {
+            background: rgba(59,130,246,0.05);
+        }
+        .dark .compare-row:hover {
+            background: rgba(59,130,246,0.1);
+        }
+    </style>
+<base target="_blank">
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useRef, useMemo } = React;
+
+        const categories = {
+            'alkali metal': { label: 'Alkali Metals', color: 'bg-red-500', text: 'text-red-500', glow: 'glow-alkali', border: 'border-red-500' },
+            'alkaline earth metal': { label: 'Alkaline Earth', color: 'bg-orange-500', text: 'text-orange-500', glow: 'glow-alkaline', border: 'border-orange-500' },
+            'transition metal': { label: 'Transition Metals', color: 'bg-yellow-500', text: 'text-yellow-500', glow: 'glow-transition', border: 'border-yellow-500' },
+            'post-transition metal': { label: 'Post-Transition', color: 'bg-green-500', text: 'text-green-500', glow: 'glow-postTransition', border: 'border-green-500' },
+            'metalloid': { label: 'Metalloids', color: 'bg-cyan-500', text: 'text-cyan-500', glow: 'glow-metalloid', border: 'border-cyan-500' },
+            'nonmetal': { label: 'Nonmetals', color: 'bg-blue-500', text: 'text-blue-500', glow: 'glow-nonmetal', border: 'border-blue-500' },
+            'halogen': { label: 'Halogens', color: 'bg-violet-500', text: 'text-violet-500', glow: 'glow-halogen', border: 'border-violet-500' },
+            'noble gas': { label: 'Noble Gases', color: 'bg-pink-500', text: 'text-pink-500', glow: 'glow-noble', border: 'border-pink-500' },
+            'lanthanide': { label: 'Lanthanides', color: 'bg-teal-500', text: 'text-teal-500', glow: 'glow-lanthanide', border: 'border-teal-500' },
+            'actinide': { label: 'Actinides', color: 'bg-rose-500', text: 'text-rose-500', glow: 'glow-actinide', border: 'border-rose-500' },
+        };
+
+        const elementsData = [
+            { n: 1, s: "H", name: "Hydrogen", mass: "1.008", config: "1s¹", cat: "nonmetal", period: 1, group: 1, state: "Gas", melt: "-259.16", boil: "-252.87", disc: "Henry Cavendish", year: "1766", isotopes: ["Protium-1", "Deuterium-2", "Tritium-3"] },
+            { n: 2, s: "He", name: "Helium", mass: "4.0026", config: "1s²", cat: "noble gas", period: 1, group: 18, state: "Gas", melt: "-272.20", boil: "-268.93", disc: "Pierre Janssen", year: "1868", isotopes: ["Helium-3", "Helium-4"] },
+            { n: 3, s: "Li", name: "Lithium", mass: "6.94", config: "[He] 2s¹", cat: "alkali metal", period: 2, group: 1, state: "Solid", melt: "180.50", boil: "1342", disc: "Johan August Arfwedson", year: "1817", isotopes: ["Lithium-6", "Lithium-7"] },
+            { n: 4, s: "Be", name: "Beryllium", mass: "9.0122", config: "[He] 2s²", cat: "alkaline earth metal", period: 2, group: 2, state: "Solid", melt: "1287", boil: "2469", disc: "Louis Nicolas Vauquelin", year: "1798", isotopes: ["Beryllium-9"] },
+            { n: 5, s: "B", name: "Boron", mass: "10.81", config: "[He] 2s² 2p¹", cat: "metalloid", period: 2, group: 13, state: "Solid", melt: "2075", boil: "4000", disc: "Joseph Louis Gay-Lussac", year: "1808", isotopes: ["Boron-10", "Boron-11"] },
+            { n: 6, s: "C", name: "Carbon", mass: "12.011", config: "[He] 2s² 2p²", cat: "nonmetal", period: 2, group: 14, state: "Solid", melt: "3550", boil: "4027", disc: "Known since antiquity", year: "Ancient", isotopes: ["Carbon-12", "Carbon-13", "Carbon-14"] },
+            { n: 7, s: "N", name: "Nitrogen", mass: "14.007", config: "[He] 2s² 2p³", cat: "nonmetal", period: 2, group: 15, state: "Gas", melt: "-210.1", boil: "-195.79", disc: "Daniel Rutherford", year: "1772", isotopes: ["Nitrogen-14", "Nitrogen-15"] },
+            { n: 8, s: "O", name: "Oxygen", mass: "15.999", config: "[He] 2s² 2p⁴", cat: "nonmetal", period: 2, group: 16, state: "Gas", melt: "-218.79", boil: "-182.96", disc: "Carl Wilhelm Scheele", year: "1771", isotopes: ["Oxygen-16", "Oxygen-17", "Oxygen-18"] },
+            { n: 9, s: "F", name: "Fluorine", mass: "18.998", config: "[He] 2s² 2p⁵", cat: "halogen", period: 2, group: 17, state: "Gas", melt: "-219.67", boil: "-188.11", disc: "André-Marie Ampère", year: "1810", isotopes: ["Fluorine-19"] },
+            { n: 10, s: "Ne", name: "Neon", mass: "20.180", config: "[He] 2s² 2p⁶", cat: "noble gas", period: 2, group: 18, state: "Gas", melt: "-248.59", boil: "-246.08", disc: "Morris Travers", year: "1898", isotopes: ["Neon-20", "Neon-21", "Neon-22"] },
+            { n: 11, s: "Na", name: "Sodium", mass: "22.990", config: "[Ne] 3s¹", cat: "alkali metal", period: 3, group: 1, state: "Solid", melt: "97.79", boil: "882.9", disc: "Humphry Davy", year: "1807", isotopes: ["Sodium-23"] },
+            { n: 12, s: "Mg", name: "Magnesium", mass: "24.305", config: "[Ne] 3s²", cat: "alkaline earth metal", period: 3, group: 2, state: "Solid", melt: "650", boil: "1090", disc: "Joseph Black", year: "1755", isotopes: ["Magnesium-24", "Magnesium-25", "Magnesium-26"] },
+            { n: 13, s: "Al", name: "Aluminium", mass: "26.982", config: "[Ne] 3s² 3p¹", cat: "post-transition metal", period: 3, group: 13, state: "Solid", melt: "660.32", boil: "2519", disc: "Hans Christian Ørsted", year: "1825", isotopes: ["Aluminium-27"] },
+            { n: 14, s: "Si", name: "Silicon", mass: "28.085", config: "[Ne] 3s² 3p²", cat: "metalloid", period: 3, group: 14, state: "Solid", melt: "1414", boil: "3265", disc: "Jöns Jacob Berzelius", year: "1824", isotopes: ["Silicon-28", "Silicon-29", "Silicon-30"] },
+            { n: 15, s: "P", name: "Phosphorus", mass: "30.974", config: "[Ne] 3s² 3p³", cat: "nonmetal", period: 3, group: 15, state: "Solid", melt: "44.15", boil: "280.5", disc: "Hennig Brand", year: "1669", isotopes: ["Phosphorus-31"] },
+            { n: 16, s: "S", name: "Sulfur", mass: "32.06", config: "[Ne] 3s² 3p⁴", cat: "nonmetal", period: 3, group: 16, state: "Solid", melt: "115.21", boil: "444.60", disc: "Known since antiquity", year: "Ancient", isotopes: ["Sulfur-32", "Sulfur-33", "Sulfur-34", "Sulfur-36"] },
+            { n: 17, s: "Cl", name: "Chlorine", mass: "35.45", config: "[Ne] 3s² 3p⁵", cat: "halogen", period: 3, group: 17, state: "Gas", melt: "-101.5", boil: "-34.04", disc: "Carl Wilhelm Scheele", year: "1774", isotopes: ["Chlorine-35", "Chlorine-37"] },
+            { n: 18, s: "Ar", name: "Argon", mass: "39.948", config: "[Ne] 3s² 3p⁶", cat: "noble gas", period: 3, group: 18, state: "Gas", melt: "-189.34", boil: "-185.85", disc: "Lord Rayleigh", year: "1894", isotopes: ["Argon-36", "Argon-38", "Argon-40"] },
+            { n: 19, s: "K", name: "Potassium", mass: "39.098", config: "[Ar] 4s¹", cat: "alkali metal", period: 4, group: 1, state: "Solid", melt: "63.5", boil: "759", disc: "Humphry Davy", year: "1807", isotopes: ["Potassium-39", "Potassium-40", "Potassium-41"] },
+            { n: 20, s: "Ca", name: "Calcium", mass: "40.078", config: "[Ar] 4s²", cat: "alkaline earth metal", period: 4, group: 2, state: "Solid", melt: "842", boil: "1484", disc: "Humphry Davy", year: "1808", isotopes: ["Calcium-40", "Calcium-42", "Calcium-43", "Calcium-44", "Calcium-48"] },
+            { n: 21, s: "Sc", name: "Scandium", mass: "44.956", config: "[Ar] 3d¹ 4s²", cat: "transition metal", period: 4, group: 3, state: "Solid", melt: "1541", boil: "2836", disc: "Lars Fredrik Nilson", year: "1879", isotopes: ["Scandium-45"] },
+            { n: 22, s: "Ti", name: "Titanium", mass: "47.867", config: "[Ar] 3d² 4s²", cat: "transition metal", period: 4, group: 4, state: "Solid", melt: "1668", boil: "3287", disc: "William Gregor", year: "1791", isotopes: ["Titanium-46", "Titanium-47", "Titanium-48", "Titanium-49", "Titanium-50"] },
+            { n: 23, s: "V", name: "Vanadium", mass: "50.942", config: "[Ar] 3d³ 4s²", cat: "transition metal", period: 4, group: 5, state: "Solid", melt: "1910", boil: "3407", disc: "Andrés Manuel del Río", year: "1801", isotopes: ["Vanadium-50", "Vanadium-51"] },
+            { n: 24, s: "Cr", name: "Chromium", mass: "51.996", config: "[Ar] 3d⁵ 4s¹", cat: "transition metal", period: 4, group: 6, state: "Solid", melt: "1907", boil: "2671", disc: "Louis Nicolas Vauquelin", year: "1797", isotopes: ["Chromium-50", "Chromium-52", "Chromium-53", "Chromium-54"] },
+            { n: 25, s: "Mn", name: "Manganese", mass: "54.938", config: "[Ar] 3d⁵ 4s²", cat: "transition metal", period: 4, group: 7, state: "Solid", melt: "1246", boil: "2061", disc: "Johan Gottlieb Gahn", year: "1774", isotopes: ["Manganese-55"] },
+            { n: 26, s: "Fe", name: "Iron", mass: "55.845", config: "[Ar] 3d⁶ 4s²", cat: "transition metal", period: 4, group: 8, state: "Solid", melt: "1538", boil: "2862", disc: "Known since antiquity", year: "Ancient", isotopes: ["Iron-54", "Iron-56", "Iron-57", "Iron-58"] },
+            { n: 27, s: "Co", name: "Cobalt", mass: "58.933", config: "[Ar] 3d⁷ 4s²", cat: "transition metal", period: 4, group: 9, state: "Solid", melt: "1495", boil: "2927", disc: "Georg Brandt", year: "1735", isotopes: ["Cobalt-59"] },
+            { n: 28, s: "Ni", name: "Nickel", mass: "58.693", config: "[Ar] 3d⁸ 4s²", cat: "transition metal", period: 4, group: 10, state: "Solid", melt: "1455", boil: "2913", disc: "Axel Fredrik Cronstedt", year: "1751", isotopes: ["Nickel-58", "Nickel-60", "Nickel-61", "Nickel-62", "Nickel-64"] },
+            { n: 29, s: "Cu", name: "Copper", mass: "63.546", config: "[Ar] 3d¹⁰ 4s¹", cat: "transition metal", period: 4, group: 11, state: "Solid", melt: "1084.62", boil: "2562", disc: "Known since antiquity", year: "Ancient", isotopes: ["Copper-63", "Copper-65"] },
+            { n: 30, s: "Zn", name: "Zinc", mass: "65.38", config: "[Ar] 3d¹⁰ 4s²", cat: "transition metal", period: 4, group: 12, state: "Solid", melt: "419.53", boil: "907", disc: "Known since antiquity", year: "Ancient", isotopes: ["Zinc-64", "Zinc-66", "Zinc-67", "Zinc-68", "Zinc-70"] },
+            { n: 31, s: "Ga", name: "Gallium", mass: "69.723", config: "[Ar] 3d¹⁰ 4s² 4p¹", cat: "post-transition metal", period: 4, group: 13, state: "Solid", melt: "29.76", boil: "2400", disc: "Lecoq de Boisbaudran", year: "1875", isotopes: ["Gallium-69", "Gallium-71"] },
+            { n: 32, s: "Ge", name: "Germanium", mass: "72.63", config: "[Ar] 3d¹⁰ 4s² 4p²", cat: "metalloid", period: 4, group: 14, state: "Solid", melt: "938.25", boil: "2833", disc: "Clemens Winkler", year: "1886", isotopes: ["Germanium-70", "Germanium-72", "Germanium-73", "Germanium-74", "Germanium-76"] },
+            { n: 33, s: "As", name: "Arsenic", mass: "74.922", config: "[Ar] 3d¹⁰ 4s² 4p³", cat: "metalloid", period: 4, group: 15, state: "Solid", melt: "817", boil: "614", disc: "Albertus Magnus", year: "1250", isotopes: ["Arsenic-75"] },
+            { n: 34, s: "Se", name: "Selenium", mass: "78.96", config: "[Ar] 3d¹⁰ 4s² 4p⁴", cat: "nonmetal", period: 4, group: 16, state: "Solid", melt: "221", boil: "685", disc: "Jöns Jacob Berzelius", year: "1817", isotopes: ["Selenium-74", "Selenium-76", "Selenium-77", "Selenium-78", "Selenium-80", "Selenium-82"] },
+            { n: 35, s: "Br", name: "Bromine", mass: "79.904", config: "[Ar] 3d¹⁰ 4s² 4p⁵", cat: "halogen", period: 4, group: 17, state: "Liquid", melt: "-7.3", boil: "58.8", disc: "Antoine Jérôme Balard", year: "1826", isotopes: ["Bromine-79", "Bromine-81"] },
+            { n: 36, s: "Kr", name: "Krypton", mass: "83.798", config: "[Ar] 3d¹⁰ 4s² 4p⁶", cat: "noble gas", period: 4, group: 18, state: "Gas", melt: "-157.36", boil: "-153.22", disc: "William Ramsay", year: "1898", isotopes: ["Krypton-78", "Krypton-80", "Krypton-82", "Krypton-83", "Krypton-84", "Krypton-86"] },
+            { n: 37, s: "Rb", name: "Rubidium", mass: "85.468", config: "[Kr] 5s¹", cat: "alkali metal", period: 5, group: 1, state: "Solid", melt: "39.31", boil: "688", disc: "Robert Bunsen", year: "1861", isotopes: ["Rubidium-85", "Rubidium-87"] },
+            { n: 38, s: "Sr", name: "Strontium", mass: "87.62", config: "[Kr] 5s²", cat: "alkaline earth metal", period: 5, group: 2, state: "Solid", melt: "777", boil: "1377", disc: "Humphry Davy", year: "1808", isotopes: ["Strontium-84", "Strontium-86", "Strontium-87", "Strontium-88"] },
+            { n: 39, s: "Y", name: "Yttrium", mass: "88.906", config: "[Kr] 4d¹ 5s²", cat: "transition metal", period: 5, group: 3, state: "Solid", melt: "1522", boil: "3345", disc: "Johan Gadolin", year: "1794", isotopes: ["Yttrium-89"] },
+            { n: 40, s: "Zr", name: "Zirconium", mass: "91.224", config: "[Kr] 4d² 5s²", cat: "transition metal", period: 5, group: 4, state: "Solid", melt: "1855", boil: "4409", disc: "Martin Heinrich Klaproth", year: "1789", isotopes: ["Zirconium-90", "Zirconium-91", "Zirconium-92", "Zirconium-94", "Zirconium-96"] },
+            { n: 41, s: "Nb", name: "Niobium", mass: "92.906", config: "[Kr] 4d⁴ 5s¹", cat: "transition metal", period: 5, group: 5, state: "Solid", melt: "2477", boil: "4744", disc: "Charles Hatchett", year: "1801", isotopes: ["Niobium-93"] },
+            { n: 42, s: "Mo", name: "Molybdenum", mass: "95.95", config: "[Kr] 4d⁵ 5s¹", cat: "transition metal", period: 5, group: 6, state: "Solid", melt: "2623", boil: "4639", disc: "Carl Wilhelm Scheele", year: "1778", isotopes: ["Molybdenum-92", "Molybdenum-94", "Molybdenum-95", "Molybdenum-96", "Molybdenum-97", "Molybdenum-98", "Molybdenum-100"] },
+            { n: 43, s: "Tc", name: "Technetium", mass: "98", config: "[Kr] 4d⁵ 5s²", cat: "transition metal", period: 5, group: 7, state: "Solid", melt: "2157", boil: "4265", disc: "Carlo Perrier", year: "1937", isotopes: ["Technetium-97", "Technetium-98", "Technetium-99"] },
+            { n: 44, s: "Ru", name: "Ruthenium", mass: "101.07", config: "[Kr] 4d⁷ 5s¹", cat: "transition metal", period: 5, group: 8, state: "Solid", melt: "2334", boil: "4150", disc: "Jędrzej Śniadecki", year: "1844", isotopes: ["Ruthenium-96", "Ruthenium-98", "Ruthenium-99", "Ruthenium-100", "Ruthenium-101", "Ruthenium-102", "Ruthenium-104"] },
+            { n: 45, s: "Rh", name: "Rhodium", mass: "102.91", config: "[Kr] 4d⁸ 5s¹", cat: "transition metal", period: 5, group: 9, state: "Solid", melt: "1964", boil: "3695", disc: "William Hyde Wollaston", year: "1803", isotopes: ["Rhodium-103"] },
+            { n: 46, s: "Pd", name: "Palladium", mass: "106.42", config: "[Kr] 4d¹⁰", cat: "transition metal", period: 5, group: 10, state: "Solid", melt: "1554.9", boil: "2963", disc: "William Hyde Wollaston", year: "1803", isotopes: ["Palladium-102", "Palladium-104", "Palladium-105", "Palladium-106", "Palladium-108", "Palladium-110"] },
+            { n: 47, s: "Ag", name: "Silver", mass: "107.87", config: "[Kr] 4d¹⁰ 5s¹", cat: "transition metal", period: 5, group: 11, state: "Solid", melt: "961.78", boil: "2162", disc: "Known since antiquity", year: "Ancient", isotopes: ["Silver-107", "Silver-109"] },
+            { n: 48, s: "Cd", name: "Cadmium", mass: "112.41", config: "[Kr] 4d¹⁰ 5s²", cat: "transition metal", period: 5, group: 12, state: "Solid", melt: "321.07", boil: "767", disc: "Karl Samuel Leberecht Hermann", year: "1817", isotopes: ["Cadmium-106", "Cadmium-108", "Cadmium-110", "Cadmium-111", "Cadmium-112", "Cadmium-113", "Cadmium-114", "Cadmium-116"] },
+            { n: 49, s: "In", name: "Indium", mass: "114.82", config: "[Kr] 4d¹⁰ 5s² 5p¹", cat: "post-transition metal", period: 5, group: 13, state: "Solid", melt: "156.60", boil: "2072", disc: "Ferdinand Reich", year: "1863", isotopes: ["Indium-113", "Indium-115"] },
+            { n: 50, s: "Sn", name: "Tin", mass: "118.71", config: "[Kr] 4d¹⁰ 5s² 5p²", cat: "post-transition metal", period: 5, group: 14, state: "Solid", melt: "231.93", boil: "2602", disc: "Known sin
