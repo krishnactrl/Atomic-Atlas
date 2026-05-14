@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elementra — Interactive Periodic Table</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        alkali: '#ef4444',
+                        alkaline: '#f97316',
+                        transition: '#eab308',
+                        postTransition: '#22c55e',
+                        metalloid: '#06b6d4',
+                        nonmetal: '#3b82f6',
+                        halogen: '#8b5cf6',
+                        noble: '#ec4899',
+                        lanthanide: '#14b8a6',
+                        actinide: '#f43f5e',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { scrollbar-width: thin; scrollbar-color: rgba(156,163,175,0.3) transparent; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(156,163,175,0.3); border-radius: 3px; }
+        .element-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .element-card:hover {
+            transform: translateY(-4px) scale(1.08);
+            z-index: 50;
+            box-shadow: 0 20px 40px -10px rgba(0,0,0,0.3);
+        }
+        .glass {
+            background: rgba(255,255,255,0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        .dark .glass {
+            background: rgba(15,23,42,0.7);
+        }
+        .glow-alkali { --glow: rgba(239,68,68,0.4); }
+        .glow-alkaline { --glow: rgba(249,115,22,0.4); }
+        .glow-transition { --glow: rgba(234,179,8,0.4); }
+        .glow-postTransition { --glow: rgba(34,197,94,0.4); }
+        .glow-metalloid { --glow: rgba(6,182,212,0.4); }
+        .glow-nonmetal { --glow: rgba(59,130,246,0.4); }
+        .glow-halogen { --glow: rgba(139,92,246,0.4); }
+        .glow-noble { --glow: rgba(236,72,153,0.4); }
+        .glow-lanthanide { --glow: rgba(20,184,166,0.4); }
+        .glow-actinide { --glow: rgba(244,63,94,0.4); }
+        .element-card:hover {
+            box-shadow: 0 0 30px var(--glow), 0 20px 40px -10px rgba(0,0,0,0.3);
+        }
+        .shell-ring {
+            animation: rotate 20s linear infinite;
+        }
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .electron {
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(0.8); }
+        }
+        .modal-enter {
+            animation: modalIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        @keyframes modalIn {
+            from { opacity: 0; transform: scale(0.95) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .search-highlight {
+            animation: highlight 0.5s ease;
+        }
+        @keyframes highlight {
+            0% { background: rgba(59,130,246,0.3); }
+            100% { background: transparent; }
+        }
+        .compare-row:hover {
+            background: rgba(59,130,246,0.05);
+        }
+        .dark .compare-row:hover {
+            background: rgba(59,130,246,0.1);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useRef, useMemo } = React;
+
+        const categories = {
+            'alkali metal': { label: 'Alkali Metals', color: 'bg-red-500', text: 'text-red-500', glow: 'glow-alkali', border: 'border-red-500' },
+            'alkaline earth metal': { label: 'Alkaline Earth', color: 'bg-orange-500', text: 'text-orange-500', glow: 'glow-alkaline', border: 'border-orange-500' },
+            'transition metal': { label: 'Transition Metals', color: 'bg-yellow-500', text: 'text-yellow-500', glow: 'glow-transition', border: 'border-yellow-500' },
+            'post-transition metal': { label: 'Post-Transition', color: 'bg-green-500', text: 'text-green-500', glow: 'glow-postTransition', border: 'border-green-500' },
+            'metalloid': { label: 'Metalloids', color: 'bg-cyan-500', text: 'text-cyan-500', glow: 'glow-metalloid', border: 'border-cyan-500' },
+            'nonmetal': { label: 'Nonmetals', color: 'bg-blue-500', text: 'text-blue-500', glow: 'glow-nonmetal', border: 'border-blue-500' },
+            'halogen': { label: 'Halogens', color: 'bg-violet-500', text: 'text-violet-500', glow: 'glow-halogen', border: 'border-violet-500' },
+            'noble gas': { label: 'Noble Gases', color: 'bg-pink-500', text: 'text-pink-500', glow: 'glow-noble', border: 'border-pink-500' },
+            'lanthanide': { label: 'Lanthanides', color: 'bg-teal-500', text: 'text-teal-500', glow: 'glow-lanthanide', border: 'border-teal-500' },
+            'actinide': { label: 'Actinides', color: 'bg-rose-500', text: 'text-rose-500', glow: 'glow-actinide', border: 'border-rose-500' },
+        };
+
+        const elementsData = [
+            { n: 1, s: "H", name: "Hydrogen", mass: "1.008", config: "1s¹", cat: "nonmetal", period: 1, group: 1, state: "Gas", melt: "-259.16", boil: "-252.87", disc: "Henry Cavendish", year: "1766", isotopes: ["Protium-1", "Deuterium-2", "Tritium-3"] },
+            { n: 2, s: "He", name: "Helium", mass: "4.0026", config: "1s²", cat: "noble gas", period: 1, group: 18, state: "Gas", melt: "-272.20", boil: "-268.93", disc: "Pierre Janssen", year: "1868", isotopes: ["Helium-3", "Helium-4"] },
+            { n: 3, s: "Li", name: "Lithium", mass: "6.94", config: "[He] 2s¹", cat: "alkali metal", period: 2, group: 1, state: "Solid", melt: "180.50", boil: "1342", disc: "Johan August Arfwedson", year: "1817", isotopes: ["Lithium-6", "Lithium-7"] },
+            { n: 4, s: "Be", name: "Beryllium", mass: "9.0122", config: "[He] 2s²", cat: "alkaline earth metal", period: 2, group: 2, state: "Solid", melt: "1287", boil: "2469", disc: "Louis Nicolas Vauquelin", year: "1798", isotopes: ["Beryllium-9"] },
+            { n: 5, s: "B", name: "Boron", mass: "10.81", config: "[He] 2s² 2p¹", cat: "metalloid", period: 2, group: 13, state: "Solid", melt: "2075", boil: "4000", disc: "Joseph Louis Gay-Lussac", year: "1808", isotopes: ["Boron-10", "Boron-11"] },
+            { n: 6, s: "C", name: "Carbon", mass: "12.011", config: "[He] 2s² 2p²", cat: "nonmetal", period: 2, group: 14, state: "Solid", melt: "3550", boil: "4027", disc: "Known since antiquity", year: "Ancient", isotopes: ["Carbon-12", "Carbon-13", "Carbon-14"] },
+            { n: 7, s: "N", name: "Nitrogen", mass: "14.007", config: "[He] 2s² 2p³", cat: "nonmetal", period: 2, group: 15, state: "Gas", melt: "-210.1", boil: "-195.79", disc: "Daniel Rutherford", year: "1772", isotopes: ["Nitrogen-14", "Nitrogen-15"] },
+            { n: 8, s: "O", name: "Oxygen", mass: "15.999", config: "[He] 2s² 2p⁴", cat: "nonmetal", period: 2, group: 16, state: "Gas", melt: "-218.79", boil: "-182.96", disc: "Carl Wilhelm Scheele", year: "1771", isotopes: ["Oxygen-16", "Oxygen-17", "Oxygen-18"] },
+            { n: 9, s: "F", name: "Fluorine", mass: "18.998", config: "[He] 2s² 2p⁵", cat: "halogen", period: 2, group: 17, state: "Gas", melt: "-219.67", boil: "-188.11", disc: "André-Marie Ampère", year: "1810", isotopes: ["Fluorine-19"] },
+            { n: 10, s: "Ne", name: "Neon", mass: "20.180", config: "[He] 2s² 2p⁶", cat: "noble gas", period: 2, group: 18, state: "Gas", melt: "-248.59", boil: "-246.08", disc: "Morris Travers", year: "1898", isotopes: ["Neon-20", "Neon-21", "Neon-22"] },
+            { n: 11, s: "Na", name: "Sodium", mass: "22.990", config: "[Ne] 3s¹", cat: "alkali metal", period: 3, group: 1, state: "Solid", melt: "97.79", boil: "882.9", disc: "Humphry Davy", year: "1807", isotopes: ["Sodium-23"] },
+            { n: 12, s: "Mg", name: "Magnesium", mass: "24.305", config: "[Ne] 3s²", cat: "alkaline earth metal", period: 3, group: 2, state: "Solid", melt: "650", boil: "1090", disc: "Joseph Black", year: "1755", isotopes: ["Magnesium-24", "Magnesium-25", "Magnesium-26"] },
+            { n: 13, s: "Al", name: "Aluminium", mass: "26.982", config: "[Ne] 3s² 3p¹", cat: "post-transition metal", period: 3, group: 13, state: "Solid", melt: "660.32", boil: "2519", disc: "Hans Christian Ørsted", year: "1825", isotopes: ["Aluminium-27"] },
+            { n: 14, s: "Si", name: "Silicon", mass: "28.085", config: "[Ne] 3s² 3p²", cat: "metalloid", period: 3, group: 14, state: "Solid", melt: "1414", boil: "3265", disc: "Jöns Jacob Berzelius", year: "1824", isotopes: ["Silicon-28", "Silicon-29", "Silicon-30"] },
+            { n: 15, s: "P", name: "Phosphorus", mass: "30.974", config: "[Ne] 3s² 3p³", cat: "nonmetal", period: 3, group: 15, state: "Solid", melt: "44.15", boil: "280.5", disc: "Hennig Brand", year: "1669", isotopes: ["Phosphorus-31"] },
+            { n: 16, s: "S", name: "Sulfur", mass: "32.06", config: "[Ne] 3s² 3p⁴", cat: "nonmetal", period: 3, group: 16, state: "Solid", melt: "115.21", boil: "444.60", disc: "Known since antiquity", year: "Ancient", isotopes: ["Sulfur-32", "Sulfur-33", "Sulfur-34", "Sulfur-36"] },
+            { n: 17, s: "Cl", name: "Chlorine", mass: "35.45", config: "[Ne] 3s² 3p⁵", cat: "halogen", period: 3, group: 17, state: "Gas", melt: "-101.5", boil: "-34.04", disc: "Carl Wilhelm Scheele", year: "1774", isotopes: ["Chlorine-35", "Chlorine-37"] },
+            { n: 18, s: "Ar", name: "Argon", mass: "39.948", config: "[Ne] 3s² 3p⁶", cat: "noble gas", period: 3, group: 18, state: "Gas", melt: "-189.34", boil: "-185.85", disc: "Lord Rayleigh", year: "1894", isotopes: ["Argon-36", "Argon-38", "Argon-40"] },
+            { n: 19, s: "K", name: "Potassium", mass: "39.098", config: "[Ar] 4s¹", cat: "alkali metal", period: 4, group: 1, state: "Solid", melt: "63.5", boil: "759", disc: "Humphry Davy", year: "1807", isotopes: ["Potassium-39", "Potassium-40", "Potassium-41"] },
+            { n: 20, s: "Ca", name: "Calcium", mass: "40.078", config: "[Ar] 4s²", cat: "alkaline earth metal", period: 4, group: 2, state: "Solid", melt: "842", boil: "1484", disc: "Humphry Davy", year: "1808", isotopes: ["Calcium-40", "Calcium-42", "Calcium-43", "Calcium-44", "Calcium-48"] },
+            { n: 21, s: "Sc", name: "Scandium", mass: "44.956", config: "[Ar] 3d¹ 4s²", cat: "transition metal", period: 4, group: 3, state: "Solid", melt: "1541", boil: "2836", disc: "Lars Fredrik Nilson", year: "1879", isotopes: ["Scandium-45"] },
+            { n: 22, s: "Ti", name: "Titanium", mass: "47.867", config: "[Ar] 3d² 4s²", cat: "transition metal", period: 4, group: 4, state: "Solid", melt: "1668", boil: "3287", disc: "William Gregor", year: "1791", isotopes: ["Titanium-46", "Titanium-47", "Titanium-48", "Titanium-49", "Titanium-50"] },
+            { n: 23, s: "V", name: "Vanadium", mass: "50.942", config: "[Ar] 3d³ 4s²", cat: "transition metal", period: 4, group: 5, state: "Solid", melt: "1910", boil: "3407", disc: "Andrés Manuel del Río", year: "1801", isotopes: ["Vanadium-50", "Vanadium-51"] },
+            { n: 24, s: "Cr", name: "Chromium", mass: "51.996", config: "[Ar] 3d⁵ 4s¹", cat: "transition metal", period: 4, group: 6, state: "Solid", melt: "1907", boil: "2671", disc: "Louis Nicolas Vauquelin", year: "1797", isotopes: ["Chromium-50", "Chromium-52", "Chromium-53", "Chromium-54"] },
+            { n: 25, s: "Mn", name: "Manganese", mass: "54.938", config: "[Ar] 3d⁵ 4s²", cat: "transition metal", period: 4, group: 7, state: "Solid", melt: "1246", boil: "2061", disc: "Johan Gottlieb Gahn", year: "1774", isotopes: ["Manganese-55"] },
+            { n: 26, s: "Fe", name: "Iron", mass: "55.845", config: "[Ar] 3d⁶ 4s²", cat: "transition metal", period: 4, group: 8, state: "Solid", melt: "1538", boil: "2862", disc: "Known since antiquity", year: "Ancient", isotopes: ["Iron-54", "Iron-56", "Iron-57", "Iron-58"] },
+            { n: 27, s: "Co", name: "Cobalt", mass: "58.933", config: "[Ar] 3d⁷ 4s²", cat: "transition metal", period: 4, group: 9, state: "Solid", melt: "1495", boil: "2927", disc: "Georg Brandt", year: "1735", isotopes: ["Cobalt-59"] },
+            { n: 28, s: "Ni", name: "Nickel", mass: "58.693", config: "[Ar] 3d⁸ 4s²", cat: "transition metal", period: 4, group: 10, state: "Solid", melt: "1455", boil: "2913", disc: "Axel Fredrik Cronstedt", year: "1751", isotopes: ["Nickel-58", "Nickel-60", "Nickel-61", "Nickel-62", "Nickel-64"] },
+            { n: 29, s: "Cu", name: "Copper", mass: "63.546", config: "[Ar] 3d¹⁰ 4s¹", cat: "transition metal", period: 4, group: 11, state: "Solid", melt: "1084.62", boil: "2562", disc: "Known since antiquity", year: "Ancient", isotopes: ["Copper-63", "Copper-65"] },
+            { n: 30, s: "Zn", name: "Zinc", mass: "65.38", config: "[Ar] 3d¹⁰ 4s²", cat: "transition metal", period: 4, group: 12, state: "Solid", melt: "419.53", boil: "907", disc: "Known since antiquity", year: "Ancient", isotopes: ["Zinc-64", "Zinc-66", "Zinc-67", "Zinc-68", "Zinc-70"] },
+            { n: 31, s: "Ga", name: "Gallium", mass: "69.723", config: "[Ar] 3d¹⁰ 4s² 4p¹", cat: "post-transition metal", period: 4, group: 13, state: "Solid", melt: "29.76", boil: "2400", disc: "Lecoq de Boisbaudran", year: "1875", isotopes: ["Gallium-69", "Gallium-71"] },
+            { n: 32, s: "Ge", name: "Germanium", mass: "72.63", config: "[Ar] 3d¹⁰ 4s² 4p²", cat: "metalloid", period: 4, group: 14, state: "Solid", melt: "938.25", boil: "2833", disc: "Clemens Winkler", year: "1886", isotopes: ["Germanium-70", "Germanium-72", "Germanium-73", "Germanium-74", "Germanium-76"] },
+            { n: 33, s: "As", name: "Arsenic", mass: "74.922", config: "[Ar] 3d¹⁰ 4s² 4p³", cat: "metalloid", period: 4, group: 15, state: "Solid", melt: "817", boil: "614", disc: "Albertus Magnus", year: "1250", isotopes: ["Arsenic-75"] },
+            { n: 34, s: "Se", name: "Selenium", mass: "78.96", config: "[Ar] 3d¹⁰ 4s² 4p⁴", cat: "nonmetal", period: 4, group: 16, state: "Solid", melt: "221", boil: "685", disc: "Jöns Jacob Berzelius", year: "1817", isotopes: ["Selenium-74", "Selenium-76", "Selenium-77", "Selenium-78", "Selenium-80", "Selenium-82"] },
+            { n: 35, s: "Br", name: "Bromine", mass: "79.904", config: "[Ar] 3d¹⁰ 4s² 4p⁵", cat: "halogen", period: 4, group: 17, state: "Liquid", melt: "-7.3", boil: "58.8", disc: "Antoine Jérôme Balard", year: "1826", isotopes: ["Bromine-79", "Bromine-81"] },
+            { n: 36, s: "Kr", name: "Krypton", mass: "83.798", config: "[Ar] 3d¹⁰ 4s² 4p⁶", cat: "noble gas", period: 4, group: 18, state: "Gas", melt: "-157.36", boil: "-153.22", disc: "William Ramsay", year: "1898", isotopes: ["Krypton-78", "Krypton-80", "Krypton-82", "Krypton-83", "Krypton-84", "Krypton-86"] },
+            { n: 37, s: "Rb", name: "Rubidium", mass: "85.468", config: "[Kr] 5s¹", cat: "alkali metal", period: 5, group: 1, state: "Solid", melt: "39.31", boil: "688", disc: "Robert Bunsen", year: "1861", isotopes: ["Rubidium-85", "Rubidium-87"] },
+            { n: 38, s: "Sr", name: "Strontium", mass: "87.62", config: "[Kr] 5s²", cat: "alkaline earth metal", period: 5, group: 2, state: "Solid", melt: "777", boil: "1377", disc: "Humphry Davy", year: "1808", isotopes: ["Strontium-84", "Strontium-86", "Strontium-87", "Strontium-88"] },
+            { n: 39, s: "Y", name: "Yttrium", mass: "88.906", config: "[Kr] 4d¹ 5s²", cat: "transition metal", period: 5, group: 3, state: "Solid", melt: "1522", boil: "3345", disc: "Johan Gadolin", year: "1794", isotopes: ["Yttrium-89"] },
+            { n: 40, s: "Zr", name: "Zirconium", mass: "91.224", config: "[Kr] 4d² 5s²", cat: "transition metal", period: 5, group: 4, state: "Solid", melt: "1855", boil: "4409", disc: "Martin Heinrich Klaproth", year: "1789", isotopes: ["Zirconium-90", "Zirconium-91", "Zirconium-92", "Zirconium-94", "Zirconium-96"] },
+            { n: 41, s: "Nb", name: "Niobium", mass: "92.906", config: "[Kr] 4d⁴ 5s¹", cat: "transition metal", period: 5, group: 5, state: "Solid", melt: "2477", boil: "4744", disc: "Charles Hatchett", year: "1801", isotopes: ["Niobium-93"] },
+            { n: 42, s: "Mo", name: "Molybdenum", mass: "95.95", config: "[Kr] 4d⁵ 5s¹", cat: "transition metal", period: 5, group: 6, state: "Solid", melt: "2623", boil: "4639", disc: "Carl Wilhelm Scheele", year: "1778", isotopes: ["Molybdenum-92", "Molybdenum-94", "Molybdenum-95", "Molybdenum-96", "Molybdenum-97", "Molybdenum-98", "Molybdenum-100"] },
+            { n: 43, s: "Tc", name: "Technetium", mass: "98", config: "[Kr] 4d⁵ 5s²", cat: "transition metal", period: 5, group: 7, state: "Solid", melt: "2157", boil: "4265", disc: "Carlo Perrier", year: "1937", isotopes: ["Technetium-97", "Technetium-98", "Technetium-99"] },
+            { n: 44, s: "Ru", name: "Ruthenium", mass: "101.07", config: "[Kr] 4d⁷ 5s¹", cat: "transition metal", period: 5, group: 8, state: "Solid", melt: "2334", boil: "4150", disc: "Jędrzej Śniadecki", year: "1844", isotopes: ["Ruthenium-96", "Ruthenium-98", "Ruthenium-99", "Ruthenium-100", "Ruthenium-101", "Ruthenium-102", "Ruthenium-104"] },
+            { n: 45, s: "Rh", name: "Rhodium", mass: "102.91", config: "[Kr] 4d⁸ 5s¹", cat: "transition metal", period: 5, group: 9, state: "Solid", melt: "1964", boil: "3695", disc: "William Hyde Wollaston", year: "1803", isotopes: ["Rhodium-103"] },
+            { n: 46, s: "Pd", name: "Palladium", mass: "106.42", config: "[Kr] 4d¹⁰", cat: "transition metal", period: 5, group: 10, state: "Solid", melt: "1554.9", boil: "2963", disc: "William Hyde Wollaston", year: "1803", isotopes: ["Palladium-102", "Palladium-104", "Palladium-105", "Palladium-106", "Palladium-108", "Palladium-110"] },
+            { n: 47, s: "Ag", name: "Silver", mass: "107.87", config: "[Kr] 4d¹⁰ 5s¹", cat: "transition metal", period: 5, group: 11, state: "Solid", melt: "961.78", boil: "2162", disc: "Known since antiquity", year: "Ancient", isotopes: ["Silver-107", "Silver-109"] },
+            { n: 48, s: "Cd", name: "Cadmium", mass: "112.41", config: "[Kr] 4d¹⁰ 5s²", cat: "transition metal", period: 5, group: 12, state: "Solid", melt: "321.07", boil: "767", disc: "Karl Samuel Leberecht Hermann", year: "1817", isotopes: ["Cadmium-106", "Cadmium-108", "Cadmium-110", "Cadmium-111", "Cadmium-112", "Cadmium-113", "Cadmium-114", "Cadmium-116"] },
+            { n: 49, s: "In", name: "Indium", mass: "114.82", config: "[Kr] 4d¹⁰ 5s² 5p¹", cat: "post-transition metal", period: 5, group: 13, state: "Solid", melt: "156.60", boil: "2072", disc: "Ferdinand Reich", year: "1863", isotopes: ["Indium-113", "Indium-115"] },
+            { n: 50, s: "Sn", name: "Tin", mass: "118.71", config: "[Kr] 4d¹⁰ 5s² 5p²", cat: "post-transition metal", period: 5, group: 14, state: "Solid", melt: "231.93", boil: "2602", disc: "Known since antiquity", year: "Ancient", isotopes: ["Tin-112", "Tin-114", "Tin-115", "Tin-116", "Tin-117", "Tin-118", "Tin-119", "Tin-120", "Tin-122", "Tin-124"] },
+            { n: 51, s: "Sb", name: "Antimony", mass: "121.76", config: "[Kr] 4d¹⁰ 5s² 5p³", cat: "metalloid", period: 5, group: 15, state: "Solid", melt: "630.63", boil: "1587", disc: "Known since antiquity", year: "Ancient", isotopes: ["Antimony-121", "Antimony-123"] },
+            { n: 52, s: "Te", name: "Tellurium", mass: "127.60", config: "[Kr] 4d¹⁰ 5s² 5p⁴", cat: "metalloid", period: 5, group: 16, state: "Solid", melt: "449.51", boil: "988", disc: "Franz-Joseph Müller von Reichenstein", year: "1782", isotopes: ["Tellurium-120", "Tellurium-122", "Tellurium-123", "Tellurium-124", "Tellurium-125", "Tellurium-126", "Tellurium-128", "Tellurium-130"] },
+            { n: 53, s: "I", name: "Iodine", mass: "126.90", config: "[Kr] 4d¹⁰ 5s² 5p⁵", cat: "halogen", period: 5, group: 17, state: "Solid", melt: "113.7", boil: "184.3", disc: "Bernard Courtois", year: "1811", isotopes: ["Iodine-127"] },
+            { n: 54, s: "Xe", name: "Xenon", mass: "131.29", config: "[Kr] 4d¹⁰ 5s² 5p⁶", cat: "noble gas", period: 5, group: 18, state: "Gas", melt: "-111.75", boil: "-108.10", disc: "William Ramsay", year: "1898", isotopes: ["Xenon-124", "Xenon-126", "Xenon-128", "Xenon-129", "Xenon-130", "Xenon-131", "Xenon-132", "Xenon-134", "Xenon-136"] },
+            { n: 55, s: "Cs", name: "Cesium", mass: "132.91", config: "[Xe] 6s¹", cat: "alkali metal", period: 6, group: 1, state: "Solid", melt: "28.44", boil: "671", disc: "Robert Bunsen", year: "1860", isotopes: ["Cesium-133"] },
+            { n: 56, s: "Ba", name: "Barium", mass: "137.33", config: "[Xe] 6s²", cat: "alkaline earth metal", period: 6, group: 2, state: "Solid", melt: "727", boil: "1845", disc: "Humphry Davy", year: "1808", isotopes: ["Barium-130", "Barium-132", "Barium-134", "Barium-135", "Barium-136", "Barium-137", "Barium-138"] },
+            { n: 57, s: "La", name: "Lanthanum", mass: "138.91", config: "[Xe] 5d¹ 6s²", cat: "lanthanide", period: 6, group: 3, state: "Solid", melt: "920", boil: "3464", disc: "Carl Gustaf Mosander", year: "1839", isotopes: ["Lanthanum-138", "Lanthanum-139"] },
+            { n: 58, s: "Ce", name: "Cerium", mass: "140.12", config: "[Xe] 4f¹ 5d¹ 6s²", cat: "lanthanide", period: 9, group: 4, state: "Solid", melt: "798", boil: "3360", disc: "Martin Heinrich Klaproth", year: "1803", isotopes: ["Cerium-136", "Cerium-138", "Cerium-140", "Cerium-142"] },
+            { n: 59, s: "Pr", name: "Praseodymium", mass: "140.91", config: "[Xe] 4f³ 6s²", cat: "lanthanide", period: 9, group: 5, state: "Solid", melt: "931", boil: "3520", disc: "Carl Auer von Welsbach", year: "1885", isotopes: ["Praseodymium-141"] },
+            { n: 60, s: "Nd", name: "Neodymium", mass: "144.24", config: "[Xe] 4f⁴ 6s²", cat: "lanthanide", period: 9, group: 6, state: "Solid", melt: "1021", boil: "3074", disc: "Carl Auer von Welsbach", year: "1885", isotopes: ["Neodymium-142", "Neodymium-143", "Neodymium-144", "Neodymium-145", "Neodymium-146", "Neodymium-148", "Neodymium-150"] },
+            { n: 61, s: "Pm", name: "Promethium", mass: "145", config: "[Xe] 4f⁵ 6s²", cat: "lanthanide", period: 9, group: 7, state: "Solid", melt: "1100", boil: "3000", disc: "Jacob A. Marinsky", year: "1945", isotopes: ["Promethium-145", "Promethium-147"] },
+            { n: 62, s: "Sm", name: "Samarium", mass: "150.36", config: "[Xe] 4f⁶ 6s²", cat: "lanthanide", period: 9, group: 8, state: "Solid", melt: "1072", boil: "1794", disc: "Lecoq de Boisbaudran", year: "1879", isotopes: ["Samarium-144", "Samarium-147", "Samarium-148", "Samarium-149", "Samarium-150", "Samarium-152", "Samarium-154"] },
+            { n: 63, s: "Eu", name: "Europium", mass: "151.96", config: "[Xe] 4f⁷ 6s²", cat: "lanthanide", period: 9, group: 9, state: "Solid", melt: "822", boil: "1529", disc: "Eugène-Anatole Demarçay", year: "1896", isotopes: ["Europium-151", "Europium-153"] },
+            { n: 64, s: "Gd", name: "Gadolinium", mass: "157.25", config: "[Xe] 4f⁷ 5d¹ 6s²", cat: "lanthanide", period: 9, group: 10, state: "Solid", melt: "1313", boil: "3250", disc: "Jean Charles Galissard de Marignac", year: "1880", isotopes: ["Gadolinium-152", "Gadolinium-154", "Gadolinium-155", "Gadolinium-156", "Gadolinium-157", "Gadolinium-158", "Gadolinium-160"] },
+            { n: 65, s: "Tb", name: "Terbium", mass: "158.93", config: "[Xe] 4f⁹ 6s²", cat: "lanthanide", period: 9, group: 11, state: "Solid", melt: "1356", boil: "3230", disc: "Carl Gustaf Mosander", year: "1843", isotopes: ["Terbium-159"] },
+            { n: 66, s: "Dy", name: "Dysprosium", mass: "162.50", config: "[Xe] 4f¹⁰ 6s²", cat: "lanthanide", period: 9, group: 12, state: "Solid", melt: "1412", boil: "2567", disc: "Lecoq de Boisbaudran", year: "1886", isotopes: ["Dysprosium-156", "Dysprosium-158", "Dysprosium-160", "Dysprosium-161", "Dysprosium-162", "Dysprosium-163", "Dysprosium-164"] },
+            { n: 67, s: "Ho", name: "Holmium", mass: "164.93", config: "[Xe] 4f¹¹ 6s²", cat: "lanthanide", period: 9, group: 13, state: "Solid", melt: "1474", boil: "2700", disc: "Per Teodor Cleve", year: "1878", isotopes: ["Holmium-165"] },
+            { n: 68, s: "Er", name: "Erbium", mass: "167.26", config: "[Xe] 4f¹² 6s²", cat: "lanthanide", period: 9, group: 14, state: "Solid", melt: "1529", boil: "2868", disc: "Carl Gustaf Mosander", year: "1843", isotopes: ["Erbium-162", "Erbium-164", "Erbium-166", "Erbium-167", "Erbium-168", "Erbium-170"] },
+            { n: 69, s: "Tm", name: "Thulium", mass: "168.93", config: "[Xe] 4f¹³ 6s²", cat: "lanthanide", period: 9, group: 15, state: "Solid", melt: "1545", boil: "1950", disc: "Per Teodor Cleve", year: "1879", isotopes: ["Thulium-169"] },
+            { n: 70, s: "Yb", name: "Ytterbium", mass: "173.05", config: "[Xe] 4f¹⁴ 6s²", cat: "lanthanide", period: 9, group: 16, state: "Solid", melt: "819", boil: "1196", disc: "Jean Charles Galissard de Marignac", year: "1878", isotopes: ["Ytterbium-168", "Ytterbium-170", "Ytterbium-171", "Ytterbium-172", "Ytterbium-173", "Ytterbium-174", "Ytterbium-176"] },
+            { n: 71, s: "Lu", name: "Lutetium", mass: "174.97", config: "[Xe] 4f¹⁴ 5d¹ 6s²", cat: "lanthanide", period: 9, group: 17, state: "Solid", melt: "1663", boil: "3402", disc: "Georges Urbain", year: "1907", isotopes: ["Lutetium-175", "Lutetium-176"] },
+            { n: 72, s: "Hf", name: "Hafnium", mass: "178.49", config: "[Xe] 4f¹⁴ 5d² 6s²", cat: "transition metal", period: 6, group: 4, state: "Solid", melt: "2233", boil: "4603", disc: "Dirk Coster", year: "1923", isotopes: ["Hafnium-174", "Hafnium-176", "Hafnium-177", "Hafnium-178", "Hafnium-179", "Hafnium-180"] },
+            { n: 73, s: "Ta", name: "Tantalum", mass: "180.95", config: "[Xe] 4f¹⁴ 5d³ 6s²", cat: "transition metal", period: 6, group: 5, state: "Solid", melt: "3017", boil: "5458", disc: "Anders Gustaf Ekeberg", year: "1802", isotopes: ["Tantalum-180", "Tantalum-181"] },
+            { n: 74, s: "W", name: "Tungsten", mass: "183.84", config: "[Xe] 4f¹⁴ 5d⁴ 6s²", cat: "transition metal", period: 6, group: 6, state: "Solid", melt: "3422", boil: "5555", disc: "Juan José Elhuyar", year: "1783", isotopes: ["Tungsten-180", "Tungsten-182", "Tungsten-183", "Tungsten-184", "Tungsten-186"] },
+            { n: 75, s: "Re", name: "Rhenium", mass: "186.21", config: "[Xe] 4f¹⁴ 5d⁵ 6s²", cat: "transition metal", period: 6, group: 7, state: "Solid", melt: "3186", boil: "5596", disc: "Masataka Ogawa", year: "1908", isotopes: ["Rhenium-185", "Rhenium-187"] },
+            { n: 76, s: "Os", name: "Osmium", mass: "190.23", config: "[Xe] 4f¹⁴ 5d⁶ 6s²", cat: "transition metal", period: 6, group: 8, state: "Solid", melt: "3033", boil: "5012", disc: "Smithson Tennant", year: "1803", isotopes: ["Osmium-184", "Osmium-187", "Osmium-188", "Osmium-189", "Osmium-190", "Osmium-192"] },
+            { n: 77, s: "Ir", name: "Iridium", mass: "192.22", config: "[Xe] 4f¹⁴ 5d⁷ 6s²", cat: "transition metal", period: 6, group: 9, state: "Solid", melt: "2446", boil: "4428", disc: "Smithson Tennant", year: "1803", isotopes: ["Iridium-191", "Iridium-193"] },
+            { n: 78, s: "Pt", name: "Platinum", mass: "195.08", config: "[Xe] 4f¹⁴ 5d⁹ 6s¹", cat: "transition metal", period: 6, group: 10, state: "Solid", melt: "1768.3", boil: "3825", disc: "Antonio de Ulloa", year: "1735", isotopes: ["Platinum-190", "Platinum-192", "Platinum-194", "Platinum-195", "Platinum-196", "Platinum-198"] },
+            { n: 79, s: "Au", name: "Gold", mass: "196.97", config: "[Xe] 4f¹⁴ 5d¹⁰ 6s¹", cat: "transition metal", period: 6, group: 11, state: "Solid", melt: "1064.18", boil: "2856", disc: "Known since antiquity", year: "Ancient", isotopes: ["Gold-197"] },
+            { n: 80, s: "Hg", name: "Mercury", mass: "200.59", config: "[Xe] 4f¹⁴ 5d¹⁰ 6s²", cat: "transition metal", period: 6, group: 12, state: "Liquid", melt: "-38.83", boil: "356.73", disc: "Known since antiquity", year: "Ancient", isotopes: ["Mercury-196", "Mercury-198", "Mercury-199", "Mercury-200", "Mercury-201", "Mercury-202", "Mercury-204"] },
+            { n: 81, s: "Tl", name: "Thallium", mass: "204.38", config: "[Xe] 4f¹⁴ 5d¹⁰ 6s² 6p¹", cat: "post-transition metal", period: 6, group: 13, state: "Solid", melt: "304", boil: "1473", disc: "William Crookes", year: "1861", isotopes: ["Thallium-203", "Thallium-205"] },
+            { n: 82, s: "Pb", name: "Lead", mass: "207.2", config: "[Xe] 4f¹⁴ 5d¹⁰ 6s² 6p²", cat: "post-transition metal", period: 6, group: 14, state: "Solid", melt: "327.46", boil: "1749", disc: "Known since antiquity", year: "Ancient", isotopes: ["Lead-204", "Lead-206", "Lead-207", "Lead-208"] },
+            { n: 83, s: "Bi", name: "Bismuth", mass: "208.98", config: "[Xe] 4f¹⁴ 5d¹⁰ 6s² 6p³", cat: "post-transition metal", period: 6, group: 15, state: "Solid", melt: "271.40", boil: "1564", disc: "Known since antiquity", year: "Ancient", isotopes: ["Bismuth-209"] },
+            { n: 84, s: "Po", name: "Polonium", mass: "209", config: "[Xe] 4f¹⁴ 5d¹⁰ 6s² 6p⁴", cat: "post-transition metal", period: 6, group: 16, state: "Solid", melt: "254", boil: "962", disc: "Marie Curie", year: "1898", isotopes: ["Polonium-209", "Polonium-210"] },
+            { n: 85, s: "At", name: "Astatine", mass: "210", config: "[Xe] 4f¹⁴ 5d¹⁰ 6s² 6p⁵", cat: "halogen", period: 6, group: 17, state: "Solid", melt: "302", boil: "350", disc: "Dale R. Corson", year: "1940", isotopes: ["Astatine-210", "Astatine-211"] },
+            { n: 86, s: "Rn", name: "Radon", mass: "222", config: "[Xe] 4f¹⁴ 5d¹⁰ 6s² 6p⁶", cat: "noble gas", period: 6, group: 18, state: "Gas", melt: "-71", boil: "-61.7", disc: "Friedrich Ernst Dorn", year: "1900", isotopes: ["Radon-211", "Radon-220", "Radon-222"] },
+            { n: 87, s: "Fr", name: "Francium", mass: "223", config: "[Rn] 7s¹", cat: "alkali metal", period: 7, group: 1, state: "Solid", melt: "27", boil: "677", disc: "Marguerite Perey", year: "1939", isotopes: ["Francium-223"] },
+            { n: 88, s: "Ra", name: "Radium", mass: "226", config: "[Rn] 7s²", cat: "alkaline earth metal", period: 7, group: 2, state: "Solid", melt: "700", boil: "1737", disc: "Marie Curie", year: "1898", isotopes: ["Radium-223", "Radium-224", "Radium-226", "Radium-228"] },
+            { n: 89, s: "Ac", name: "Actinium", mass: "227", config: "[Rn] 6d¹ 7s²", cat: "actinide", period: 7, group: 3, state: "Solid", melt: "1227", boil: "3198", disc: "Friedrich O. Giesel", year: "1902", isotopes: ["Actinium-225", "Actinium-227"] },
+            { n: 90, s: "Th", name: "Thorium", mass: "232.04", config: "[Rn] 6d² 7s²", cat: "actinide", period: 10, group: 4, state: "Solid", melt: "1750", boil: "4820", disc: "Jöns Jacob Berzelius", year: "1828", isotopes: ["Thorium-230", "Thorium-232"] },
+            { n: 91, s: "Pa", name: "Protactinium", mass: "231.04", config: "[Rn] 5f² 6d¹ 7s²", cat: "actinide", period: 10, group: 5, state: "Solid", melt: "1568", boil: "4027", disc: "Kasimir Fajans", year: "1913", isotopes: ["Protactinium-231"] },
+            { n: 92, s: "U", name: "Uranium", mass: "238.03", config: "[Rn] 5f³ 6d¹ 7s²", cat: "actinide", period: 10, group: 6, state: "Solid", melt: "1135", boil: "4131", disc: "Martin Heinrich Klaproth", year: "1789", isotopes: ["Uranium-234", "Uranium-235", "Uranium-238"] },
+            { n: 93, s: "Np", name: "Neptunium", mass: "237", config: "[Rn] 5f⁴ 6d¹ 7s²", cat: "actinide", period: 10, group: 7, state: "Solid", melt: "644", boil: "3902", disc: "Edwin McMillan", year: "1940", isotopes: ["Neptunium-237"] },
+            { n: 94, s: "Pu", name: "Plutonium", mass: "244", config: "[Rn] 5f⁶ 7s²", cat: "actinide", period: 10, group: 8, state: "Solid", melt: "639.4", boil: "3228", disc: "Glenn T. Seaborg", year: "1940", isotopes: ["Plutonium-238", "Plutonium-239", "Plutonium-240", "Plutonium-241", "Plutonium-242", "Plutonium-244"] },
+            { n: 95, s: "Am", name: "Americium", mass: "243", config: "[Rn] 5f⁷ 7s²", cat: "actinide", period: 10, group: 9, state: "Solid", melt: "1176", boil: "2607", disc: "Glenn T. Seaborg", year: "1944", isotopes: ["Americium-241", "Americium-243"] },
+            { n: 96, s: "Cm", name: "Curium", mass: "247", config: "[Rn] 5f⁷ 6d¹ 7s²", cat: "actinide", period: 10, group: 10, state: "Solid", melt: "1340", boil: "3110", disc: "Glenn T. Seaborg", year: "1944", isotopes: ["Curium-243", "Curium-244", "Curium-245", "Curium-246", "Curium-247", "Curium-248"] },
+            { n: 97, s: "Bk", name: "Berkelium", mass: "247", config: "[Rn] 5f⁹ 7s²", cat: "actinide", period: 10, group: 11, state: "Solid", melt: "986", boil: "2627", disc: "Glenn T. Seaborg", year: "1949", isotopes: ["Berkelium-247", "Berkelium-249"] },
+            { n: 98, s: "Cf", name: "Californium", mass: "251", config: "[Rn] 5f¹⁰ 7s²", cat: "actinide", period: 10, group: 12, state: "Solid", melt: "900", boil: "1472", disc: "Glenn T. Seaborg", year: "1950", isotopes: ["Californium-249", "Californium-250", "Californium-251", "Californium-252"] },
+            { n: 99, s: "Es", name: "Einsteinium", mass: "252", config: "[Rn] 5f¹¹ 7s²", cat: "actinide", period: 10, group: 13, state: "Solid", melt: "860", boil: "996", disc: "Albert Ghiorso", year: "1952", isotopes: ["Einsteinium-252", "Einsteinium-253", "Einsteinium-254", "Einsteinium-255"] },
+            { n: 100, s: "Fm", name: "Fermium", mass: "257", config: "[Rn] 5f¹² 7s²", cat: "actinide", period: 10, group: 14, state: "Solid", melt: "1527", boil: "unknown", disc: "Albert Ghiorso", year: "1952", isotopes: ["Fermium-253", "Fermium-255", "Fermium-257"] },
+            { n: 101, s: "Md", name: "Mendelevium", mass: "258", config: "[Rn] 5f¹³ 7s²", cat: "actinide", period: 10, group: 15, state: "Solid", melt: "827", boil: "unknown", disc: "Albert Ghiorso", year: "1955", isotopes: ["Mendelevium-255", "Mendelevium-256", "Mendelevium-257", "Mendelevium-258"] },
+            { n: 102, s: "No", name: "Nobelium", mass: "259", config: "[Rn] 5f¹⁴ 7s²", cat: "actinide", period: 10, group: 16, state: "Solid", melt: "827", boil: "unknown", disc: "Joint Institute", year: "1966", isotopes: ["Nobelium-253", "Nobelium-254", "Nobelium-255", "Nobelium-257", "Nobelium-259"] },
+            { n: 103, s: "Lr", name: "Lawrencium", mass: "262", config: "[Rn] 5f¹⁴ 7s² 7p¹", cat: "actinide", period: 10, group: 17, state: "Solid", melt: "1627", boil: "unknown", disc: "Albert Ghiorso", year: "1961", isotopes: ["Lawrencium-256", "Lawrencium-257", "Lawrencium-260", "Lawrencium-262"] },
+            { n: 104, s: "Rf", name: "Rutherfordium", mass: "267", config: "[Rn] 5f¹⁴ 6d² 7s²", cat: "transition metal", period: 7, group: 4, state: "Solid", melt: "2100", boil: "5500", disc: "Joint Institute", year: "1964", isotopes: ["Rutherfordium-261", "Rutherfordium-263", "Rutherfordium-265", "Rutherfordium-267"] },
+            { n: 105, s: "Db", name: "Dubnium", mass: "268", config: "[Rn] 5f¹⁴ 6d³ 7s²", cat: "transition metal", period: 7, group: 5, state: "Solid", melt: "unknown", boil: "unknown", disc: "Joint Institute", year: "1967", isotopes: ["Dubnium-262", "Dubnium-263", "Dubnium-266", "Dubnium-268"] },
+            { n: 106, s: "Sg", name: "Seaborgium", mass: "269", config: "[Rn] 5f¹⁴ 6d⁴ 7s²", cat: "transition metal", period: 7, group: 6, state: "Solid", melt: "unknown", boil: "unknown", disc: "Lawrence Berkeley", year: "1974", isotopes: ["Seaborgium-265", "Seaborgium-267", "Seaborgium-269", "Seaborgium-271"] },
+            { n: 107, s: "Bh", name: "Bohrium", mass: "270", config: "[Rn] 5f¹⁴ 6d⁵ 7s²", cat: "transition metal", period: 7, group: 7, state: "Solid", melt: "unknown", boil: "unknown", disc: "GSI Helmholtz", year: "1981", isotopes: ["Bohrium-267", "Bohrium-270", "Bohrium-272"] },
+            { n: 108, s: "Hs", name: "Hassium", mass: "269", config: "[Rn] 5f¹⁴ 6d⁶ 7s²", cat: "transition metal", period: 7, group: 8, state: "Solid", melt: "unknown", boil: "unknown", disc: "GSI Helmholtz", year: "1984", isotopes: ["Hassium-269", "Hassium-270", "Hassium-277"] },
+            { n: 109, s: "Mt", name: "Meitnerium", mass: "278", config: "[Rn] 5f¹⁴ 6d⁷ 7s²", cat: "transition metal", period: 7, group: 9, state: "Solid", melt: "unknown", boil: "unknown", disc: "GSI Helmholtz", year: "1982", isotopes: ["Meitnerium-276", "Meitnerium-278"] },
+            { n: 110, s: "Ds", name: "Darmstadtium", mass: "281", config: "[Rn] 5f¹⁴ 6d⁹ 7s¹", cat: "transition metal", period: 7, group: 10, state: "Solid", melt: "unknown", boil: "unknown", disc: "GSI Helmholtz", year: "1994", isotopes: ["Darmstadtium-279", "Darmstadtium-281"] },
+            { n: 111, s: "Rg", name: "Roentgenium", mass: "281", config: "[Rn] 5f¹⁴ 6d¹⁰ 7s¹", cat: "transition metal", period: 7, group: 11, state: "Solid", melt: "unknown", boil: "unknown", disc: "GSI Helmholtz", year: "1994", isotopes: ["Roentgenium-280", "Roentgenium-281"] },
+            { n: 112, s: "Cn", name: "Copernicium", mass: "285", config: "[Rn] 5f¹⁴ 6d¹⁰ 7s²", cat: "transition metal", period: 7, group: 12, state: "Gas", melt: "unknown", boil: "357", disc: "GSI Helmholtz", year: "1996", isotopes: ["Copernicium-283", "Copernicium-285"] },
+            { n: 113, s: "Nh", name: "Nihonium", mass: "286", config: "[Rn] 5f¹⁴ 6d¹⁰ 7s² 7p¹", cat: "post-transition metal", period: 7, group: 13, state: "Solid", melt: "unknown", boil: "unknown", disc: "RIKEN", year: "2003", isotopes: ["Nihonium-278", "Nihonium-282", "Nihonium-283", "Nihonium-284", "Nihonium-285", "Nihonium-286"] },
+            { n: 114, s: "Fl", name: "Flerovium", mass: "289", config: "[Rn] 5f¹⁴ 6d¹⁰ 7s² 7p²", cat: "post-transition metal", period: 7, group: 14, state: "Solid", melt: "unknown", boil: "210", disc: "Joint Institute", year: "1998", isotopes: ["Flerovium-287", "Flerovium-288", "Flerovium-289"] },
+            { n: 115, s: "Mc", name: "Moscovium", mass: "289", config: "[Rn] 5f¹⁴ 6d¹⁰ 7s² 7p³", cat: "post-transition metal", period: 7, group: 15, state: "Solid", melt: "unknown", boil: "unknown", disc: "Joint Institute", year: "2003", isotopes: ["Moscovium-287", "Moscovium-288", "Moscovium-289", "Moscovium-290"] },
+            { n: 116, s: "Lv", name: "Livermorium", mass: "293", config: "[Rn] 5f¹⁴ 6d¹⁰ 7s² 7p⁴", cat: "post-transition metal", period: 7, group: 16, state: "Solid", melt: "unknown", boil: "unknown", disc: "Joint Institute", year: "2000", isotopes: ["Livermorium-292", "Livermorium-293", "Livermorium-294"] },
+            { n: 117, s: "Ts", name: "Tennessine", mass: "294", config: "[Rn] 5f¹⁴ 6d¹⁰ 7s² 7p⁵", cat: "halogen", period: 7, group: 17, state: "Solid", melt: "unknown", boil: "unknown", disc: "Joint Institute", year: "2010", isotopes: ["Tennessine-293", "Tennessine-294"] },
+            { n: 118, s: "Og", name: "Oganesson", mass: "294", config: "[Rn] 5f¹⁴ 6d¹⁰ 7s² 7p⁶", cat: "noble gas", period: 7, group: 18, state: "Solid", melt: "unknown", boil: "unknown", disc: "Joint Institute", year: "2002", isotopes: ["Oganesson-294"] },
+        ];
+
+        const categoryKeys = Object.keys(categories);
+
+        function getCategoryInfo(cat) {
+            return categories[cat] || categories['nonmetal'];
+        }
+
+        function parseElectronConfig(config) {
+            const shells = [];
+            const regex = /(\d)([spdf])(\d+)/g;
+            let match;
+            while ((match = regex.exec(config)) !== null) {
+                shells.push({ shell: parseInt(match[1]), subshell: match[2], electrons: parseInt(match[3]) });
+            }
+            const shellCounts = {};
+            shells.forEach(s => {
+                shellCounts[s.shell] = (shellCounts[s.shell] || 0) + s.electrons;
+            });
+            return Object.entries(shellCounts).map(([k, v]) => ({ shell: parseInt(k), count: v }));
+        }
+
+        function ShellVisualizer({ config, symbol, darkMode }) {
+            const shells = parseElectronConfig(config);
+            const maxShell = Math.max(...shells.map(s => s.shell), 1);
+            const size = 200;
+            const center = size / 2;
+
+            return (
+                <div className="relative" style={{ width: size, height: size }}>
+                    <div className={`absolute inset-0 rounded-full flex items-center justify-center font-bold text-lg ${darkMode ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-900'}`} style={{ width: 40, height: 40, top: center - 20, left: center - 20 }}>
+                        {symbol}
+                    </div>
+                    {shells.map((shell, idx) => {
+                        const radius = 30 + idx * 25;
+                        const circumference = 2 * Math.PI * radius;
+                        const dashArray = `${circumference * 0.8} ${circumference * 0.2}`;
+                        return (
+                            <div key={idx} className="absolute rounded-full border-2 border-dashed opacity-60" 
+                                 style={{ 
+                                     width: radius * 2, 
+                                     height: radius * 2, 
+                                     top: center - radius, 
+                                     left: center - radius,
+                                     borderColor: darkMode ? 'rgba(148,163,184,0.4)' : 'rgba(100,116,139,0.3)',
+                                     animation: `rotate ${20 + idx * 5}s linear infinite ${idx % 2 === 0 ? 'normal' : 'reverse'}`
+                                 }}>
+                                {Array.from({ length: shell.count }).map((_, i) => {
+                                    const angle = (i / shell.count) * 2 * Math.PI;
+                                    const x = center + radius * Math.cos(angle) - 4;
+                                    const y = center + radius * Math.sin(angle) - 4;
+                                    return (
+                                        <div key={i} className="absolute w-2 h-2 rounded-full electron"
+                                             style={{ 
+                                                 left: x - center + radius, 
+                                                 top: y - center + radius,
+                                                 background: darkMode ? '#60a5fa' : '#3b82f6'
+                                             }}>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        );
+                    })}
+                </div>
+            );
+        }
+
+        function ElementCard({ element, onClick, isFiltered, isDimmed }) {
+            const cat = getCategoryInfo(element.cat);
+            const [isHovered, setIsHovered] = useState(false);
+
+            return (
+                <div 
+                    className={`element-card ${cat.glow} relative cursor-pointer rounded-lg p-2 border-2 ${cat.border} ${cat.color} bg-opacity-10 ${isDimmed ? 'opacity-20' : 'opacity-100'} ${isFiltered ? 'ring-2 ring-blue-400 ring-offset-2' : ''}`}
+                    style={{ 
+                        gridColumn: element.group, 
+                        gridRow: element.period,
+                        backgroundColor: isHovered ? (document.documentElement.classList.contains('dark') ? 'rgba(30,41,59,0.9)' : 'rgba(255,255,255,0.95)') : undefined
+                    }}
+                    onClick={() => onClick(element)}
+                    onMouseEnter={() => setIsHovered(true)}
+                    onMouseLeave={() => setIsHovered(false)}
+                >
+                    <div className="text-xs font-mono opacity-70">{element.n}</div>
+                    <div className={`text-center text-lg font-bold ${cat.text}`}>{element.s}</div>
+                    <div className="text-center text-[10px] truncate opacity-80">{element.name}</div>
+                    <div className="text-center text-[9px] opacity-60">{element.mass}</div>
+
+                    {isHovered && (
+                        <div className={`absolute -top-16 left-1/2 -translate-x-1/2 whitespace-nowrap px-3 py-2 rounded-lg text-xs z-50 shadow-xl border ${document.documentElement.classList.contains('dark') ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'}`}>
+                            <div className="font-semibold">{element.config}</div>
+                            <div className="opacity-70">{cat.label}</div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        function DetailModal({ element, onClose, onCompare, darkMode }) {
+            if (!element) return null;
+            const cat = getCategoryInfo(element.cat);
+
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+                    <div className={`modal-enter relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border shadow-2xl ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`} onClick={e => e.stopPropagation()}>
+                        <div className="p-6">
+                            <div className="flex justify-between items-start mb-6">
+                                <div className="flex items-center gap-4">
+                                    <div className={`w-20 h-20 rounded-xl flex items-center justify-center text-3xl font-bold ${cat.color} bg-opacity-20 border-2 ${cat.border}`}>
+                                        {element.s}
+                                    </div>
+                                    <div>
+                                        <h2 className="text-3xl font-bold">{element.name}</h2>
+                                        <p className={`text-lg ${cat.text}`}>{cat.label}</p>
+                                    </div>
+                                </div>
+                                <button onClick={onClose} className={`p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors`}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-4">
+                                    <div className={`p-4 rounded-xl border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                                        <h3 className="text-sm font-semibold opacity-70 mb-2">Electron Configuration</h3>
+                                        <p className="font-mono text-lg">{element.config}</p>
+                                    </div>
+
+                                    <div className={`p-4 rounded-xl border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                                        <h3 className="text-sm font-semibold opacity-70 mb-2">Properties</h3>
+                                        <div className="space-y-2 text-sm">
+                                            <div className="flex justify-between"><span className="opacity-70">Atomic Number</span><span className="font-semibold">{element.n}</span></div>
+                                            <div className="flex justify-between"><span className="opacity-70">Atomic Mass</span><span className="font-semibold">{element.mass} u</span></div>
+                                            <div className="flex justify-between"><span className="opacity-70">Period / Group</span><span className="font-semibold">{element.period} / {element.group}</span></div>
+                                            <div className="flex justify-between"><span className="opacity-70">State (STP)</span><span className="font-semibold">{element.state}</span></div>
+                                            <div className="flex justify-between"><span className="opacity-70">Melting Point</span><span className="font-semibold">{element.melt}°C</span></div>
+                                            <div className="flex justify-between"><span className="opacity-70">Boiling Point</span><span className="font-semibold">{element.boil}°C</span></div>
+                                        </div>
+                                    </div>
+
+                                    <div className={`p-4 rounded-xl border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                                        <h3 className="text-sm font-semibold opacity-70 mb-2">Discovery</h3>
+                                        <div className="space-y-2 text-sm">
+                                            <div className="flex justify-between"><span className="opacity-70">Discovered By</span><span className="font-semibold">{element.disc}</span></div>
+                                            <div className="flex justify-between"><span className="opacity-70">Year</span><span className="font-semibold">{element.year}</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div className="flex justify-center py-4">
+                                        <ShellVisualizer config={element.config} symbol={element.s} darkMode={darkMode} />
+                                    </div>
+
+                                    <div className={`p-4 rounded-xl border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                                        <h3 className="text-sm font-semibold opacity-70 mb-2">Common Isotopes</h3>
+                                        <div className="flex flex-wrap gap-2">
+                                            {element.isotopes.map((iso, i) => (
+                                                <span key={i} className={`px-3 py-1 rounded-full text-xs font-mono border ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-white border-slate-300'}`}>
+                                                    {iso}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <button 
+                                        onClick={() => onCompare(element)}
+                                        className={`w-full py-3 rounded-xl font-semibold text-white transition-all hover:opacity-90 ${cat.color}`}
+                                    >
+                                        Compare with Another Element
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function ComparePanel({ element1, element2, onClose, onSelectSecond, darkMode }) {
+            if (!element1) return null;
+
+            const properties = [
+                { label: 'Atomic Number', key: 'n' },
+                { label: 'Symbol', key: 's' },
+                { label: 'Atomic Mass', key: 'mass', suffix: ' u' },
+                { label: 'Electron Configuration', key: 'config' },
+                { label: 'Category', key: 'cat', transform: v => getCategoryInfo(v).label },
+                { label: 'Period / Group', key: 'period', transform: (v, el) => `${v} / ${el.group}` },
+                { label: 'State (STP)', key: 'state' },
+                { label: 'Melting Point', key: 'melt', suffix: '°C' },
+                { label: 'Boiling Point', key: 'boil', suffix: '°C' },
+                { label: 'Discovered By', key: 'disc' },
+                { label: 'Year Discovered', key: 'year' },
+            ];
+
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+                    <div className={`modal-enter relative w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl border shadow-2xl ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`} onClick={e => e.stopPropagation()}>
+                        <div className="p-6">
+                            <div className="flex justify-between items-center mb-6">
+                                <h2 className="text-2xl font-bold">Element Comparison</h2>
+                                <button onClick={onClose} className={`p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800`}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-4 mb-6">
+                                <div className={`p-4 rounded-xl border text-center ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                                    <div className={`inline-block px-4 py-2 rounded-lg text-2xl font-bold mb-2 ${getCategoryInfo(element1.cat).color} bg-opacity-20`}>
+                                        {element1.s}
+                                    </div>
+                                    <div className="font-semibold">{element1.name}</div>
+                                </div>
+
+                                <div className="flex items-center justify-center">
+                                    <div className={`px-4 py-2 rounded-full text-sm font-semibold ${darkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'}`}>
+                                        VS
+                                    </div>
+                                </div>
+
+                                <div className={`p-4 rounded-xl border text-center ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                                    {element2 ? (
+                                        <>
+                                            <div className={`inline-block px-4 py-2 rounded-lg text-2xl font-bold mb-2 ${getCategoryInfo(element2.cat).color} bg-opacity-20`}>
+                                                {element2.s}
+                                            </div>
+                                            <div className="font-semibold">{element2.name}</div>
+                                        </>
+                                    ) : (
+                                        <button 
+                                            onClick={() => onSelectSecond()}
+                                            className="w-full h-full flex flex-col items-center justify-center gap-2 text-blue-500 hover:text-blue-600"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                                            <span className="text-sm">Select Element</span>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {element2 && (
+                                <div className={`rounded-xl border overflow-hidden ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                                    {properties.map((prop, idx) => (
+                                        <div key={idx} className={`compare-row grid grid-cols-3 gap-4 p-3 text-sm ${idx % 2 === 0 ? (darkMode ? 'bg-slate-800/50' : 'bg-slate-50/50') : ''}`}>
+                                            <div className="font-medium text-right">{prop.transform ? prop.transform(element1[prop.key], element1) : element1[prop.key]}{prop.suffix || ''}</div>
+                                            <div className="text-center opacity-70 font-semibold">{prop.label}</div>
+                                            <div className="font-medium">{prop.transform ? prop.transform(element2[prop.key], element2) : element2[prop.key]}{prop.suffix || ''}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function App() {
+            const [darkMode, setDarkMode] = useState(false);
+            const [searchQuery, setSearchQuery] = useState('');
+            const [selectedCategory, setSelectedCategory] = useState('all');
+            const [selectedElement, setSelectedElement] = useState(null);
+            const [compareElement1, setCompareElement1] = useState(null);
+            const [compareElement2, setCompareElement2] = useState(null);
+            const [showCompare, setShowCompare] = useState(false);
+            const [selectingSecond, setSelectingSecond] = useState(false);
+            const searchRef = useRef(null);
+
+            useEffect(() => {
+                if (darkMode) {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            }, [darkMode]);
+
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if (e.key === 'Escape') {
+                        setSelectedElement(null);
+                        setShowCompare(false);
+                        setSelectingSecond(false);
+                    }
+                    if (e.key === '/' && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        searchRef.current?.focus();
+                    }
+                };
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, []);
+
+            const filteredElements = useMemo(() => {
+                return elementsData.filter(el => {
+                    const matchesSearch = !searchQuery || 
+                        el.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        el.s.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        el.n.toString() === searchQuery;
+                    const matchesCategory = selectedCategory === 'all' || el.cat === selectedCategory;
+                    return matchesSearch && matchesCategory;
+                });
+            }, [searchQuery, selectedCategory]);
+
+            const isElementVisible = (el) => {
+                return filteredElements.some(f => f.n === el.n);
+            };
+
+            const handleElementClick = (element) => {
+                if (selectingSecond) {
+                    setCompareElement2(element);
+                    setSelectingSecond(false);
+                } else {
+                    setSelectedElement(element);
+                }
+            };
+
+            const handleCompare = (element) => {
+                setSelectedElement(null);
+                setCompareElement1(element);
+                setCompareElement2(null);
+                setShowCompare(true);
+            };
+
+            return (
+                <div className="min-h-screen">
+                    {/* Header */}
+                    <header className={`sticky top-0 z-40 glass border-b ${darkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+                        <div className="max-w-[1400px] mx-auto px-4 py-4">
+                            <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center text-white font-bold text-lg">
+                                        E
+                                    </div>
+                                    <div>
+                                        <h1 className="text-xl font-bold">Elementra</h1>
+                                        <p className="text-xs opacity-70">Interactive Periodic Table</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                                    <div className="relative flex-1 lg:w-80">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 opacity-50"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                        <input 
+                                            ref={searchRef}
+                                            type="text" 
+                                            placeholder="Search by name, symbol, or number... (Press /)"
+                                            className={`w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all ${darkMode ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-400' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400'}`}
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                        />
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                        <button 
+                                            onClick={() => setShowCompare(true)}
+                                            className={`px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${darkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-slate-300 hover:bg-slate-50'}`}
+                                        >
+                                            Compare
+                                        </button>
+                                        <button 
+                                            onClick={() => setDarkMode(!darkMode)}
+                                            className={`p-2.5 rounded-xl border transition-all ${darkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-slate-300 hover:bg-slate-50'}`}
+                                        >
+                                            {darkMode ? (
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                                            ) : (
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Category Filters */}
+                            <div className="flex gap-2 mt-4 overflow-x-auto pb-2 scrollbar-hide">
+                                <button 
+                                    onClick={() => setSelectedCategory('all')}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${selectedCategory === 'all' ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+                                >
+                                    All Elements
+                                </button>
+                                {categoryKeys.map(cat => (
+                                    <button 
+                                        key={cat}
+                                        onClick={() => setSelectedCategory(cat)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all flex items-center gap-1.5 ${selectedCategory === cat ? `${categories[cat].color} text-white` : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+                                    >
+                                        <span className={`w-2 h-2 rounded-full ${categories[cat].color}`}></span>
+                                        {categories[cat].label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* Main Content */}
+                    <main className="max-w-[1400px] mx-auto px-4 py-6">
+                        {selectingSecond && (
+                            <div className={`mb-4 p-4 rounded-xl border text-center ${darkMode ? 'bg-blue-900/20 border-blue-800 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-700'}`}>
+                                <p className="font-medium">Click on any element to compare with {compareElement1?.name}</p>
+                                <button 
+                                    onClick={() => setSelectingSecond(false)}
+                                    className="mt-2 text-sm underline opacity-70 hover:opacity-100"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Periodic Table Grid */}
+                        <div className="overflow-x-auto">
+                            <div className="min-w-[1000px]">
+                                {/* Main Table */}
+                                <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(18, 1fr)', gridTemplateRows: 'repeat(7, 1fr)' }}>
+                                    {elementsData.filter(el => el.period <= 7 && !['lanthanide', 'actinide'].includes(el.cat) || (el.n >= 57 && el.n <= 71) || (el.n >= 89 && el.n <= 103)).filter(el => el.period <= 7).map(element => (
+                                        <ElementCard 
+                                            key={element.n}
+                                            element={element}
+                                            onClick={handleElementClick}
+                                            isFiltered={searchQuery && isElementVisible(element)}
+                                            isDimmed={searchQuery && !isElementVisible(element)}
+                                        />
+                                    ))}
+                                </div>
+
+                                {/* Lanthanides Label */}
+                                <div className="mt-4 mb-1 flex items-center gap-2">
+                                    <span className="text-xs font-semibold opacity-70">Lanthanides</span>
+                                    <div className="flex-1 h-px bg-slate-300 dark:bg-slate-700"></div>
+                                </div>
+
+                                {/* Lanthanides Row */}
+                                <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(18, 1fr)' }}>
+                                    {elementsData.filter(el => el.cat === 'lanthanide').map((element, idx) => (
+                                        <div key={element.n} style={{ gridColumn: idx + 4 }}>
+                                            <ElementCard 
+                                                element={element}
+                                                onClick={handleElementClick}
+                                                isFiltered={searchQuery && isElementVisible(element)}
+                                                isDimmed={searchQuery && !isElementVisible(element)}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Actinides Label */}
+                                <div className="mt-4 mb-1 flex items-center gap-2">
+                                    <span className="text-xs font-semibold opacity-70">Actinides</span>
+                                    <div className="flex-1 h-px bg-slate-300 dark:bg-slate-700"></div>
+                                </div>
+
+                                {/* Actinides Row */}
+                                <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(18, 1fr)' }}>
+                                    {elementsData.filter(el => el.cat === 'actinide').map((element, idx) => (
+                                        <div key={element.n} style={{ gridColumn: idx + 4 }}>
+                                            <ElementCard 
+                                                element={element}
+                                                onClick={handleElementClick}
+                                                isFiltered={searchQuery && isElementVisible(element)}
+                                                isDimmed={searchQuery && !isElementVisible(element)}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Legend */}
+                        <div className={`mt-8 p-6 rounded-2xl border ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+                            <h3 className="text-sm font-semibold mb-4 opacity-70">Category Legend</h3>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                                {categoryKeys.map(cat => (
+                                    <div key={cat} className="flex items-center gap-2">
+                                        <span className={`w-3 h-3 rounded-full ${categories[cat].color}`}></span>
+                                        <span className="text-xs">{categories[cat].label}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </main>
+
+                    {/* Modals */}
+                    {selectedElement && (
+                        <DetailModal 
+                            element={selectedElement} 
+                            onClose={() => setSelectedElement(null)}
+                            onCompare={handleCompare}
+                            darkMode={darkMode}
+                        />
+                    )}
+
+                    {showCompare && (
+                        <ComparePanel 
+                            element1={compareElement1}
+                            element2={compareElement2}
+                            onClose={() => {
+                                setShowCompare(false);
+                                setCompareElement1(null);
+                                setCompareElement2(null);
+                                setSelectingSecond(false);
+                            }}
+                            onSelectSecond={() => {
+                                setSelectingSecond(true);
+                                setShowCompare(false);
+                            }}
+                            darkMode={darkMode}
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
